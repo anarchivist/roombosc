@@ -240,7 +240,9 @@ def test_outgoing_command_logging(caplog, level, logged):
         messages = [r.getMessage() for r in caplog.records if r.levelno == 10]
         expected = [
             "Sending Roomba command stop to 192.0.2.50",
+            "Published Roomba command stop to 192.0.2.50",
             "Sending Roomba command dock to 192.0.2.50",
+            "Published Roomba command dock to 192.0.2.50",
         ]
         assert messages == (expected if logged else [])
         worker.cancel()
@@ -282,3 +284,40 @@ def test_incoming_event_debug_logging(caplog, level, expected, forward):
     assert events == ([f"Received Roomba event: {message!r}"] if expected else [])
     if client is not None:
         client.send_message.assert_called_once()
+
+
+@pytest.mark.parametrize("cancel_stop", [False, True])
+def test_home_waits_for_stop_publication(cancel_stop):
+    async def scenario():
+        stop_started = asyncio.Event()
+        finish_stop = asyncio.Event()
+
+        async def publish(command):
+            if command == "stop":
+                stop_started.set()
+                await finish_stop.wait()
+
+        robot = AsyncMock()
+        robot.send_command.side_effect = publish
+        bridge = Bridge(robot)
+        bridge.receive("/roomba/home")
+        worker = asyncio.create_task(bridge.run())
+        try:
+            await asyncio.wait_for(stop_started.wait(), timeout=1)
+            # The worker is suspended inside the unfinished stop publication.
+            assert [c.args[0] for c in robot.send_command.await_args_list] == ["stop"]
+            if not cancel_stop:
+                finish_stop.set()
+                await asyncio.wait_for(bridge.queue.join(), timeout=1)
+                assert [c.args[0] for c in robot.send_command.await_args_list] == [
+                    "stop",
+                    "dock",
+                ]
+        finally:
+            worker.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await worker
+        if cancel_stop:
+            assert [c.args[0] for c in robot.send_command.await_args_list] == ["stop"]
+
+    asyncio.run(scenario())

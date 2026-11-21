@@ -87,7 +87,9 @@ with `home` added to stop the current mission and then dock:
 | `sleep`, `wake` | Enter standby or wake up |
 
 The `home` command runs both steps together in the command worker, so other
-commands cannot interleave. If sending `stop` fails, `dock` is skipped and the
+commands cannot interleave. It awaits completion of the `stop` MQTT publish
+before publishing `dock`; this does not wait for the robot to physically stop.
+DEBUG logs distinguish sending from completed publication. If sending `stop` fails, `dock` is skipped and the
 failure is logged. Neither step is retried automatically.
 
 The upstream description notes that `fbeep`, `find`, and `wake` do not operate

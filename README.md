@@ -19,9 +19,9 @@ Install dependencies and run:
 
 ```sh
 uv sync
-cp config/roombosc.example.yaml roombosc.yaml
-# Edit roombosc.yaml with your device credentials, then:
-uv run roombosc --config roombosc.yaml
+cp config/roombosc.example.yaml config/roombosc.yaml
+# Edit config/roombosc.yaml with your device credentials, then:
+uv run roombosc --config config/roombosc.yaml
 ```
 
 Starting the bridge connects to the configured robot. Importing modules, parsing
@@ -57,11 +57,14 @@ uv run roombosc --ip 192.168.1.50 --blid YOUR_BLID --password YOUR_PASSWORD \
   --listen-host 127.0.0.1 --listen-port 9000
 ```
 
-The tracked example lives in `config/`; other files in that directory are ignored
-so private configurations can be kept there.
+Keep your device configuration in `config/`, for example `config/roombosc.yaml`.
+The directory is ignored by Git to keep credentials out of commits. Only
+`config/roombosc.example.yaml` is tracked, with fake values; never commit other
+files from `config/` or force-add private configuration. Copy the example rather
+than entering real credentials into it.
 
 Unknown YAML keys and invalid values are rejected. Keep real credentials in your
-private, ignored `roombosc.yaml`; CLI passwords may appear in process listings.
+private, ignored `config/roombosc.yaml`; CLI passwords may appear in process listings.
 OSC UDP has no authentication, so expose the listener only to trusted senders.
 
 ## Retrieve device credentials
@@ -83,7 +86,7 @@ Wi-Fi light flashes. Run discovery while the robot is in this mode. If discovery
 reports that the password could not be obtained, it has not retrieved usable
 credentials; prepare the robot again and retry.
 
-Copy the reported IP, BLID, and password into your private `roombosc.yaml`, keeping
+Copy the reported IP, BLID, and password into your private `config/roombosc.yaml`, keeping
 BLID and password quoted. Discovery output contains credentials: do not commit or
 share it. The bridge does not run discovery automatically.
 
@@ -167,7 +170,7 @@ Enable outbound telemetry by setting `forward_host` to a separate OSC server's
 IP address, with optional `forward_port` (default `9001`), in YAML or on the CLI:
 
 ```sh
-uv run roombosc --config roombosc.yaml --forward-host 127.0.0.1 --forward-port 9001
+uv run roombosc --config config/roombosc.yaml --forward-host 127.0.0.1 --forward-port 9001
 ```
 
 Forwarding is disabled when `forward_host` is omitted. Each decoded message
@@ -206,7 +209,7 @@ application function definitions. GitHub Actions runs all four checks.
 Use `--log-level DEBUG` to show outgoing Roomba commands and their destination IP:
 
 ```sh
-uv run roombosc --config roombosc.yaml --log-level DEBUG
+uv run roombosc --config config/roombosc.yaml --log-level DEBUG
 ```
 
 See the configuration table for CLI/YAML log settings. Each outgoing
@@ -222,9 +225,9 @@ state; handle them with the same care as telemetry output.
 Logs go to stderr by default. To also append to a UTF-8 log file:
 
 ```sh
-uv run roombosc --config roombosc.yaml --log-level DEBUG --log-to-file
+uv run roombosc --config config/roombosc.yaml --log-level DEBUG --log-to-file
 # Choose a different file:
-uv run roombosc --config roombosc.yaml --log-to-file --log-file log/session.log
+uv run roombosc --config config/roombosc.yaml --log-to-file --log-file log/session.log
 ```
 
 Both log outputs use the selected level and include timestamps. Parent directories

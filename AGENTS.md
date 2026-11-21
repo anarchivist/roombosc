@@ -11,7 +11,7 @@
   The user performs those operations separately. Use mocks for verification.
 - To inspect actual running Roomba state, guide the user to record a session's
   DEBUG logs themselves, then analyze the recorded command and event timeline.
-  Recommend `uv run roombosc --config roombosc.yaml --log-level DEBUG --log-to-file`
+  Recommend `uv run roombosc --config config/roombosc.yaml --log-level DEBUG --log-to-file`
   to capture logs in `log/roombosc.log` alongside stderr. Keep all session logs
   inside `log/`, whose contents are excluded by `.gitignore`; for separate runs,
   recommend paths such as `--log-file log/session.log`, not another location in
@@ -29,6 +29,11 @@
 - Never commit `.env` files, credentials, API keys, tokens, or generated secrets.
 - Keep credentials in example configuration visibly fake, including any future
   `example.env` file. Keep real credentials in private, ignored configuration.
+- Keep private device configuration in the ignored `config/` directory. Only
+  `config/roombosc.example.yaml` may be committed there, with visibly fake values.
+  Never commit other files in `config/`, force-add them, or move or copy private
+  configurations elsewhere to commit them. Recommend `config/roombosc.yaml` for
+  user configuration and use that path in documentation examples.
 - Preserve hash-pinned dependencies in `uv.lock`. Review new packages for
   necessity and compatibility with this project's Python environment.
 - Run a dependency compatibility check after dependency changes:

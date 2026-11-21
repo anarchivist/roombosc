@@ -1,5 +1,16 @@
 # roombosc
 
+```
+         .-----.
+       .'       '.
+      /  (o) (o)  \
+      |   .---.   |
+      \  '-----'  /
+       '.       .'
+         '-----'
+   ===~  /roomba  ~===
+```
+
 An asynchronous Python 3.11+ OSC/UDP bridge for a Wi-Fi Roomba 960, using
 `roombapy` 2 and `python-osc`. Device discovery and credential retrieval are
 outside this project; supply your own IP address, BLID, and password.

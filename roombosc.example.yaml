@@ -9,3 +9,7 @@ listen_port: 9000
 log_level: "INFO"
 log_to_file: false
 log_file: "log/roombosc.log"
+# Shared by /roomba/stop and the stop step of /roomba/home:
+stop_retries: 3
+stop_timeout: 5.0
+stop_retry_backoff: 0.25

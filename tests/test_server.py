@@ -1,10 +1,24 @@
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pythonosc.osc_message_builder import OscMessageBuilder
 
 from roombosc.server import ADDRESSES, Bridge, validate_message
+
+STOPPED = {"state": {"reported": {"cleanMissionStatus": {"phase": "stop"}}}}
+
+
+def confirming_robot():
+    robot = AsyncMock()
+    robot.register_on_message_callback = Mock(return_value=Mock())
+
+    async def publish(command):
+        if command == "stop":
+            robot.register_on_message_callback.call_args.args[0](STOPPED)
+
+    robot.send_command.side_effect = publish
+    return robot
 
 
 @pytest.mark.parametrize(
@@ -56,8 +70,14 @@ def test_reject_parameters(address, args):
 
 def test_order_failure_recovery_and_shutdown():
     async def scenario():
-        robot = AsyncMock()
-        robot.send_command.side_effect = [RuntimeError("failure"), None]
+        robot = confirming_robot()
+
+        async def publish(command):
+            if command == "start":
+                raise RuntimeError("failure")
+            robot.register_on_message_callback.call_args.args[0](STOPPED)
+
+        robot.send_command.side_effect = publish
         bridge = Bridge(robot)
         bridge.receive("/roomba/start")
         bridge.receive("/roomba/stop")
@@ -115,7 +135,7 @@ def test_serve_forwarding_lifecycle(monkeypatch, forward_host):
     from roombosc.config import Config
 
     async def scenario():
-        robot = AsyncMock()
+        robot = confirming_robot()
         robot.__aenter__.return_value = robot
         detach = Mock()
         robot.register_on_message_callback = Mock(return_value=detach)
@@ -164,7 +184,7 @@ def test_serve_forwarding_lifecycle(monkeypatch, forward_host):
 )
 def test_docking_dispatch(address, expected):
     async def scenario():
-        robot = AsyncMock()
+        robot = confirming_robot()
         bridge = Bridge(robot)
         packet = OscMessageBuilder(address=address).build()
         bridge.dispatcher.call_handlers_for_packet(packet.dgram, ("127.0.0.1", 1234))
@@ -181,7 +201,7 @@ def test_docking_dispatch(address, expected):
 @pytest.mark.parametrize("fail_stop", [False, True])
 def test_home_sequence_and_failure_recovery(fail_stop):
     async def scenario():
-        robot = AsyncMock()
+        robot = confirming_robot()
         if fail_stop:
             robot.send_command.side_effect = [RuntimeError("stop failed"), None]
         bridge = Bridge(robot)
@@ -231,7 +251,7 @@ def test_rejected_command_does_not_log_arguments(caplog):
 @pytest.mark.parametrize("level, logged", [(10, True), (20, False)])
 def test_outgoing_command_logging(caplog, level, logged):
     async def scenario():
-        robot = AsyncMock()
+        robot = confirming_robot()
         bridge = Bridge(robot, robot_host="192.0.2.50")
         bridge.receive("/roomba/home")
         worker = asyncio.create_task(bridge.run())
@@ -296,8 +316,9 @@ def test_home_waits_for_stop_publication(cancel_stop):
             if command == "stop":
                 stop_started.set()
                 await finish_stop.wait()
+                robot.register_on_message_callback.call_args.args[0](STOPPED)
 
-        robot = AsyncMock()
+        robot = confirming_robot()
         robot.send_command.side_effect = publish
         bridge = Bridge(robot)
         bridge.receive("/roomba/home")
@@ -319,5 +340,130 @@ def test_home_waits_for_stop_publication(cancel_stop):
                 await worker
         if cancel_stop:
             assert [c.args[0] for c in robot.send_command.await_args_list] == ["stop"]
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("command", ["stop", "home"])
+def test_stop_retries_and_timeout(command, caplog):
+    async def scenario():
+        robot = confirming_robot()
+        robot.send_command.side_effect = None
+        bridge = Bridge(
+            robot, stop_retries=2, stop_timeout=0.08, stop_retry_backoff=0.005
+        )
+        bridge.receive(f"/roomba/{command}")
+        bridge.receive("/roomba/pause")
+        worker = asyncio.create_task(bridge.run())
+        try:
+            await asyncio.wait_for(bridge.queue.join(), timeout=1)
+            assert [c.args[0] for c in robot.send_command.await_args_list] == [
+                "stop",
+                "stop",
+                "stop",
+                "pause",
+            ]
+            robot.register_on_message_callback.return_value.assert_called_once()
+            assert "stopped state not confirmed" in caplog.text
+        finally:
+            worker.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await worker
+
+    asyncio.run(scenario())
+
+
+def test_stop_fresh_confirmation_and_backoff():
+    async def scenario():
+        robot = confirming_robot()
+        calls = []
+        ready = asyncio.Event()
+        loop = asyncio.get_running_loop()
+
+        async def publish(command):
+            calls.append(loop.time())
+            callback = robot.register_on_message_callback.call_args.args[0]
+            callback({"state": {"reported": {"lastCommand": {"command": "stop"}}}})
+            callback({"state": {"reported": {"cleanMissionStatus": {"phase": "run"}}}})
+            if len(calls) == 3:
+                callback(STOPPED)
+                ready.set()
+
+        robot.send_command.side_effect = publish
+        bridge = Bridge(robot, stop_retries=3, stop_timeout=1, stop_retry_backoff=0.01)
+        assert await bridge.stop()
+        assert ready.is_set()
+        assert len(calls) == 3
+        assert calls[1] - calls[0] >= 0.01
+        assert calls[2] - calls[1] >= 0.02
+        # A cached or previous confirmation cannot satisfy another stop request.
+        robot.send_command.side_effect = None
+        bridge.stop_timeout = 0.01
+        bridge.stop_retries = 0
+        assert not await bridge.stop()
+
+    asyncio.run(scenario())
+
+
+def test_stop_total_timeout_includes_publish_and_cleans_up():
+    async def scenario():
+        robot = confirming_robot()
+        blocked = asyncio.Event()
+        robot.send_command.side_effect = lambda command: None
+
+        async def publish(command):
+            await blocked.wait()
+
+        robot.send_command.side_effect = publish
+        bridge = Bridge(robot, stop_timeout=0.01)
+        assert not await asyncio.wait_for(bridge.stop(), timeout=1)
+        robot.send_command.assert_awaited_once_with("stop")
+        robot.register_on_message_callback.return_value.assert_called_once()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("command", ["stop", "home"])
+def test_waits_for_delayed_stopped_report(command):
+    async def scenario():
+        robot = confirming_robot()
+        published = asyncio.Event()
+
+        async def publish(name):
+            if name == "stop":
+                published.set()
+
+        robot.send_command.side_effect = publish
+        bridge = Bridge(robot, stop_retries=0, stop_timeout=1)
+        bridge.receive(f"/roomba/{command}")
+        worker = asyncio.create_task(bridge.run())
+        try:
+            await asyncio.wait_for(published.wait(), timeout=1)
+            assert [c.args[0] for c in robot.send_command.await_args_list] == ["stop"]
+            robot.register_on_message_callback.call_args.args[0](STOPPED)
+            await asyncio.wait_for(bridge.queue.join(), timeout=1)
+            expected = ["stop", "dock"] if command == "home" else ["stop"]
+            assert [c.args[0] for c in robot.send_command.await_args_list] == expected
+            robot.register_on_message_callback.return_value.assert_called_once()
+        finally:
+            worker.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await worker
+
+    asyncio.run(scenario())
+
+
+def test_stop_cancellation_removes_listener():
+    async def scenario():
+        robot = confirming_robot()
+        robot.send_command.side_effect = None
+        bridge = Bridge(robot, stop_retries=0)
+        task = asyncio.create_task(bridge.stop())
+        await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        robot.register_on_message_callback.return_value.assert_called_once()
+        robot.send_command.assert_awaited_once_with("stop")
 
     asyncio.run(scenario())

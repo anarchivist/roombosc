@@ -27,22 +27,39 @@ uv run roombosc --config roombosc.yaml
 Starting the bridge connects to the configured robot. Importing modules, parsing
 configuration, and running tests do not connect to a robot.
 
-All settings can also be passed on the command line:
+## Configuration
+
+CLI settings override the flat YAML values in
+[roombosc.example.yaml](roombosc.example.yaml). Omitted settings use these defaults:
+
+| CLI option | YAML key | Default | Purpose / validation |
+| --- | --- | --- | --- |
+| `--config PATH` | — | No file | Load a YAML configuration file. |
+| `--ip IP` | `ip` | Required | Roomba IPv4 or IPv6 address. |
+| `--blid TEXT` | `blid` | Required | Nonempty BLID; quote it in YAML. |
+| `--password TEXT` | `password` | Required | Nonempty password; quote it in YAML. |
+| `--listen-host IP` | `listen_host` | `127.0.0.1` | Local OSC bind IP; use a LAN IP for remote clients. |
+| `--listen-port PORT` | `listen_port` | `9000` | OSC UDP port, 1–65535. |
+| `--forward-host IP` | `forward_host` | Disabled | Destination OSC server IP; setting it enables telemetry forwarding. |
+| `--forward-port PORT` | `forward_port` | `9001` | Telemetry destination UDP port, 1–65535. |
+| `--log-level LEVEL` | `log_level` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`; CLI is case insensitive. |
+| `--log-to-file` / `--no-log-to-file` | `log_to_file` | `false` | Enable or disable file output in addition to stderr. YAML requires a boolean. |
+| `--log-file PATH` | `log_file` | `log/roombosc.log` | Append UTF-8 logs here when file output is enabled; relative to the working directory. Rejects directories, symlinks, empty paths, and control characters. |
+| `--stop-retries COUNT` | `stop_retries` | `3` | Additional stop attempts without state confirmation; nonnegative integer (up to four publishes by default). |
+| `--stop-timeout SECONDS` | `stop_timeout` | `5.0` | Positive finite total timeout for stop publication, retries, and state confirmation. |
+| `--stop-retry-backoff SECONDS` | `stop_retry_backoff` | `0.25` | Positive finite initial confirmation wait; doubles before each retry. |
+| `--help` | — | — | Show command-line usage and exit. |
+
+Example without YAML:
 
 ```sh
 uv run roombosc --ip 192.168.1.50 --blid YOUR_BLID --password YOUR_PASSWORD \
   --listen-host 127.0.0.1 --listen-port 9000
 ```
 
-CLI settings override YAML values. YAML uses the flat keys shown in
-[roombosc.example.yaml](roombosc.example.yaml); quote credentials so numeric
-BLIDs remain strings. Unknown keys, missing credentials, invalid IP addresses,
-and ports outside 1–65535 are rejected. Keep the credential file private;
-`roombosc.yaml` is ignored by git. CLI passwords may appear in process listings.
-
-The OSC listener defaults to `127.0.0.1:9000`. Set `listen_host` to the computer's
-LAN IP to receive from another machine. OSC UDP provides no authentication;
-expose the listener only to trusted senders.
+Unknown YAML keys and invalid values are rejected. Keep real credentials in your
+private, ignored `roombosc.yaml`; CLI passwords may appear in process listings.
+OSC UDP has no authentication, so expose the listener only to trusted senders.
 
 ## Retrieve device credentials
 
@@ -77,20 +94,33 @@ with `home` added to stop the current mission and then dock:
 | --- | --- |
 | `start`, `clean` | Begin a two-pass cleaning mission |
 | `quick` | Begin a single-pass mission |
-| `stop` | Abort the mission |
+| `stop` | Abort the mission and await a stopped-state report, retrying within the configured limits |
 | `pause`, `resume` | Pause or resume the mission |
 | `dock` | Return to the dock |
-| `home` | Send `stop`, then `dock`, in order |
+| `home` | Confirm stopped state using the same retry policy, then send `dock` |
 | `fbeep` | Emit one beep |
 | `find` | Toggle locator beeping |
 | `off` | Power off, including Wi-Fi; requires physical wake-up |
 | `sleep`, `wake` | Enter standby or wake up |
 
-The `home` command runs both steps together in the command worker, so other
-commands cannot interleave. It awaits completion of the `stop` MQTT publish
-before publishing `dock`; this does not wait for the robot to physically stop.
-DEBUG logs distinguish sending from completed publication. If sending `stop` fails, `dock` is skipped and the
-failure is logged. Neither step is retried automatically.
+Both `stop` and `home` subscribe to robot updates before publishing `stop` and
+require a fresh `cleanMissionStatus.phase: stop` report. A `lastCommand: stop`
+echo or a cached stopped state is insufficient. `home` sends `dock` only after
+both stop publication and stopped-state confirmation complete. Direct `dock`
+continues to send docking immediately.
+
+Without confirmation, the bridge republishes `stop` up to `stop_retries` times.
+By default it waits 0.25 seconds, then 0.5 seconds, then 1 second between
+attempts. After the last attempt it waits for confirmation until the total
+five-second deadline. The total timeout includes publication time and can cut
+retries short. Set `stop_retries: 0` for a single attempt that waits until the
+deadline. No retries occur after confirmation; docking is never retried.
+
+If confirmation times out, the failure is logged and `home` skips docking.
+Publication errors also abort the operation without further retries. The temporary
+state listener is removed on success, failure, or cancellation. Other commands
+remain queued during this operation, while OSC reception and telemetry continue.
+Confirmation reflects the robot's reported state, not independent motion sensing.
 
 The upstream description notes that `fbeep`, `find`, and `wake` do not operate
 while charging. Firmware determines actual device behavior.
@@ -111,7 +141,7 @@ robot execution; queue overflow or send failures are logged separately.
 Other addresses, address patterns, and all arguments are rejected. Commands
 execute sequentially through an async worker with a 100-command queue; overflow
 is dropped and logged. Future OSC timetags are processed immediately. Failed
-commands are logged without automatic retry. There are no OSC replies or delivery
+commands are logged; only missing stop confirmations trigger the retries described above. There are no OSC replies or delivery
 guarantees. Ctrl-C closes the listener, cancels pending work, and disconnects.
 Connection supervision uses the native async
 [roombapy 2 API](https://github.com/pschmitt/roombapy#library-usage).
@@ -174,9 +204,7 @@ Use `--log-level DEBUG` to show outgoing Roomba commands and their destination I
 uv run roombosc --config roombosc.yaml --log-level DEBUG
 ```
 
-The default level is `INFO`. Supported levels are `DEBUG`, `INFO`, `WARNING`,
-`ERROR`, and `CRITICAL`; CLI values are case insensitive. You can also set
-`log_level: "DEBUG"` in YAML, with the CLI taking precedence. Each outgoing
+See the configuration table for CLI/YAML log settings. Each outgoing
 command is logged immediately before sending, including the separate `stop` and
 `dock` steps of `home`. A send log records an attempt, not robot acknowledgement.
 
@@ -194,11 +222,8 @@ uv run roombosc --config roombosc.yaml --log-level DEBUG --log-to-file
 uv run roombosc --config roombosc.yaml --log-to-file --log-file log/session.log
 ```
 
-The default file is `log/roombosc.log`, relative to the working directory.
-`--log-file` alone does not enable file logging. YAML equivalents are
-`log_to_file: true` and `log_file: "log/roombosc.log"`; `--no-log-to-file`
-overrides YAML to disable it. Both outputs use the selected log level and include
-timestamps. Parent directories are created only when file logging is enabled;
-existing files are appended to. Directory and symlink destinations are rejected.
-If the file cannot be opened, startup fails before connecting to the robot.
-Logs are not rotated automatically; keep debug logs private and manage their size.
+Both log outputs use the selected level and include timestamps. Parent directories
+are created only when file output is enabled; existing files are appended to.
+Changing `log_file` alone does not enable file output. If the file cannot be opened,
+startup fails before connecting to the robot. Logs are not rotated automatically;
+keep debug logs private and manage their size.

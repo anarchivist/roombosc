@@ -31,6 +31,7 @@ COMMANDS = frozenset(
     }
 )
 ADDRESSES = {f"/roomba/{command}": command for command in COMMANDS}
+ADDRESSES["/roomba/home"] = "dock"
 
 
 def validate_message(address: str, args: tuple[object, ...]) -> str:

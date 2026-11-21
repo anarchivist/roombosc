@@ -107,7 +107,8 @@ def test_forward_message_and_recover():
     asyncio.run(scenario())
 
 
-def test_serve_forwarding_lifecycle(monkeypatch):
+@pytest.mark.parametrize("forward_host", [None, "127.0.0.2"])
+def test_serve_forwarding_lifecycle(monkeypatch, forward_host):
     from unittest.mock import Mock
 
     import roombosc.server as server
@@ -130,7 +131,7 @@ def test_serve_forwarding_lifecycle(monkeypatch):
             Mock(return_value=Mock(create_serve_endpoint=endpoint)),
         )
         task = asyncio.create_task(
-            server.serve(Config("127.0.0.1", "fake", "fake", forward_host="127.0.0.2"))
+            server.serve(Config("127.0.0.1", "fake", "fake", forward_host=forward_host))
         )
         for _ in range(10):
             if endpoint.await_count:
@@ -138,13 +139,19 @@ def test_serve_forwarding_lifecycle(monkeypatch):
             await asyncio.sleep(0)
         callback = robot.register_on_message_callback.call_args.args[0]
         await callback({"battery": 42})
-        client.send_message.assert_called_once_with("/roomba/message", '{"battery":42}')
-        factory.assert_called_once_with("127.0.0.2", 9001)
+        if forward_host is not None:
+            client.send_message.assert_called_once_with(
+                "/roomba/message", '{"battery":42}'
+            )
+            factory.assert_called_once_with(forward_host, 9001)
+        else:
+            factory.assert_not_called()
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
         detach.assert_called_once()
-        client.close.assert_called_once()
+        if forward_host is not None:
+            client.close.assert_called_once()
         transport.close.assert_called_once()
         robot.__aexit__.assert_awaited_once()
 
@@ -256,3 +263,22 @@ def test_unsupported_address_logged(caplog, address):
     )
     assert "FAKE_PRIVATE_ARGUMENT" not in caplog.text
     assert bridge.queue.empty()
+
+
+@pytest.mark.parametrize("level, expected", [(10, True), (20, False)])
+@pytest.mark.parametrize("forward", [False, True])
+def test_incoming_event_debug_logging(caplog, level, expected, forward):
+    from unittest.mock import Mock
+
+    from roombosc.server import TelemetryForwarder
+
+    client = Mock() if forward else None
+    if client is not None:
+        client.send_message.side_effect = OSError("send failed")
+    message = {"state": {"reported": {"batPct": 75}}, "text": "line\nnext"}
+    with caplog.at_level(level, logger="roombosc.server"):
+        asyncio.run(TelemetryForwarder(client).receive(message))
+    events = [r.getMessage() for r in caplog.records if r.levelno == 10]
+    assert events == ([f"Received Roomba event: {message!r}"] if expected else [])
+    if client is not None:
+        client.send_message.assert_called_once()

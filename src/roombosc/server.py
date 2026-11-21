@@ -111,12 +111,15 @@ class Bridge:
 
 
 class TelemetryForwarder:
-    """Forward each decoded Roomba message as one JSON OSC string argument."""
+    """Log decoded Roomba messages and optionally forward them over OSC."""
 
-    def __init__(self, client: SimpleUDPClient) -> None:
+    def __init__(self, client: SimpleUDPClient | None = None) -> None:
         self.client = client
 
     async def receive(self, message: RoombaMessage) -> None:
+        LOG.debug("Received Roomba event: %r", message)
+        if self.client is None:
+            return
         try:
             payload = json.dumps(message, separators=(",", ":"), allow_nan=False)
             self.client.send_message("/roomba/message", payload)
@@ -128,12 +131,13 @@ class TelemetryForwarder:
 async def serve(config: Config) -> None:
     with ExitStack() as resources:
         robot = RoombaClient(config.ip, config.blid, config.password)
+        client = None
         if config.forward_host is not None:
             client = SimpleUDPClient(config.forward_host, config.forward_port)
             resources.callback(client.close)
-            forwarder = TelemetryForwarder(client)
-            detach = robot.register_on_message_callback(forwarder.receive)
-            resources.callback(detach)
+        forwarder = TelemetryForwarder(client)
+        detach = robot.register_on_message_callback(forwarder.receive)
+        resources.callback(detach)
         async with robot:
             bridge = Bridge(
                 robot, (config.listen_host, config.listen_port), robot_host=config.ip

@@ -1,10 +1,10 @@
 """Asynchronous OSC reception and serialized Roomba command delivery."""
 
 import asyncio
-import logging
 import json
+import logging
 from contextlib import ExitStack, suppress
-from typing import Protocol
+from typing import Protocol, cast
 
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import AsyncIOOSCUDPServer
@@ -14,14 +14,26 @@ from roombapy import RoombaClient, RoombaMessage
 from .config import Config
 
 LOG = logging.getLogger(__name__)
-COMMANDS = frozenset({
-    "start", "clean", "quick", "stop", "pause", "resume", "dock",
-    "fbeep", "find", "off", "sleep", "wake",
-})
+COMMANDS = frozenset(
+    {
+        "start",
+        "clean",
+        "quick",
+        "stop",
+        "pause",
+        "resume",
+        "dock",
+        "fbeep",
+        "find",
+        "off",
+        "sleep",
+        "wake",
+    }
+)
 ADDRESSES = {f"/roomba/{command}": command for command in COMMANDS}
 
 
-def validate_message(address: str, args: tuple) -> str:
+def validate_message(address: str, args: tuple[object, ...]) -> str:
     if address not in ADDRESSES:
         raise ValueError("unsupported OSC address")
     if args:
@@ -34,7 +46,7 @@ class Robot(Protocol):
 
 
 class Bridge:
-    def __init__(self, robot: Robot):
+    def __init__(self, robot: Robot) -> None:
         self.robot = robot
         self.queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
         # Route every packet through exact validation: OSC patterns must not
@@ -42,7 +54,7 @@ class Bridge:
         self.dispatcher = Dispatcher(strict_timing=False)
         self.dispatcher.set_default_handler(self.receive)
 
-    def receive(self, address: str, *args) -> None:
+    def receive(self, address: str, *args: object) -> None:
         try:
             command = validate_message(address, args)
         except ValueError as exc:
@@ -68,7 +80,7 @@ class Bridge:
 class TelemetryForwarder:
     """Forward each decoded Roomba message as one JSON OSC string argument."""
 
-    def __init__(self, client: SimpleUDPClient):
+    def __init__(self, client: SimpleUDPClient) -> None:
         self.client = client
 
     async def receive(self, message: RoombaMessage) -> None:
@@ -84,9 +96,8 @@ async def serve(config: Config) -> None:
     with ExitStack() as resources:
         robot = RoombaClient(config.ip, config.blid, config.password)
         if config.forward_host is not None:
-            client = resources.enter_context(
-                SimpleUDPClient(config.forward_host, config.forward_port)
-            )
+            client = SimpleUDPClient(config.forward_host, config.forward_port)
+            resources.callback(client.close)
             forwarder = TelemetryForwarder(client)
             detach = robot.register_on_message_callback(forwarder.receive)
             resources.callback(detach)
@@ -94,7 +105,9 @@ async def serve(config: Config) -> None:
             bridge = Bridge(robot)
             server = AsyncIOOSCUDPServer(
                 (config.listen_host, config.listen_port),
-                bridge.dispatcher, asyncio.get_running_loop(),
+                bridge.dispatcher,
+                # python-osc annotates the concrete loop rather than its interface.
+                cast(asyncio.BaseEventLoop, asyncio.get_running_loop()),
             )
             transport, _ = await server.create_serve_endpoint()
             worker = asyncio.create_task(bridge.run())

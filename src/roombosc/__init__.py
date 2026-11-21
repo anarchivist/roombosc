@@ -15,5 +15,7 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     except Exception:
-        logging.getLogger(__name__).error("Bridge stopped: connection or server failure")
+        logging.getLogger(__name__).error(
+            "Bridge stopped: connection or server failure"
+        )
         raise SystemExit(1) from None

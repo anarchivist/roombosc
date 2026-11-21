@@ -7,18 +7,39 @@ from pythonosc.osc_message_builder import OscMessageBuilder
 from roombosc.server import ADDRESSES, Bridge, validate_message
 
 
-@pytest.mark.parametrize("command", [
-    "start", "clean", "quick", "stop", "pause", "resume", "dock",
-    "fbeep", "find", "off", "sleep", "wake",
-])
+@pytest.mark.parametrize(
+    "command",
+    [
+        "start",
+        "clean",
+        "quick",
+        "stop",
+        "pause",
+        "resume",
+        "dock",
+        "fbeep",
+        "find",
+        "off",
+        "sleep",
+        "wake",
+    ],
+)
 def test_supported_commands(command):
     assert validate_message(f"/roomba/{command}", ()) == command
 
 
-@pytest.mark.parametrize("address", [
-    "/roomba/reset", "/roomba/start/", "/roomba/START", "/start",
-    "/roomba/*", "/roomba/{start,stop}", "/roomba/sta?t",
-])
+@pytest.mark.parametrize(
+    "address",
+    [
+        "/roomba/reset",
+        "/roomba/start/",
+        "/roomba/START",
+        "/start",
+        "/roomba/*",
+        "/roomba/{start,stop}",
+        "/roomba/sta?t",
+    ],
+)
 def test_reject_addresses(address):
     bridge = Bridge(AsyncMock())
     packet = OscMessageBuilder(address=address).build()
@@ -42,10 +63,14 @@ def test_order_failure_recovery_and_shutdown():
         bridge.receive("/roomba/stop")
         worker = asyncio.create_task(bridge.run())
         await asyncio.wait_for(bridge.queue.join(), timeout=1)
-        assert [call.args[0] for call in robot.send_command.await_args_list] == ["start", "stop"]
+        assert [call.args[0] for call in robot.send_command.await_args_list] == [
+            "start",
+            "stop",
+        ]
         worker.cancel()
         with pytest.raises(asyncio.CancelledError):
             await worker
+
     asyncio.run(scenario())
 
 
@@ -59,12 +84,16 @@ def test_queue_bounded():
 def test_forward_message_and_recover():
     import json
     from unittest.mock import Mock
+
     from roombosc.server import TelemetryForwarder
 
     async def scenario():
         client = Mock()
         forwarder = TelemetryForwarder(client)
-        message = {"state": {"reported": {"batPct": 75, "ready": True}}, "items": [None, "é"]}
+        message = {
+            "state": {"reported": {"batPct": 75, "ready": True}},
+            "items": [None, "é"],
+        }
         await forwarder.receive(message)
         address, payload = client.send_message.call_args.args
         assert address == "/roomba/message"
@@ -74,11 +103,13 @@ def test_forward_message_and_recover():
         client.send_message.side_effect = None
         await forwarder.receive(message)
         assert client.send_message.call_count == 3
+
     asyncio.run(scenario())
 
 
 def test_serve_forwarding_lifecycle(monkeypatch):
     from unittest.mock import Mock
+
     import roombosc.server as server
     from roombosc.config import Config
 
@@ -89,14 +120,18 @@ def test_serve_forwarding_lifecycle(monkeypatch):
         robot.register_on_message_callback = Mock(return_value=detach)
         monkeypatch.setattr(server, "RoombaClient", Mock(return_value=robot))
         client = Mock()
-        client.__enter__ = Mock(return_value=client)
-        client.__exit__ = Mock(return_value=False)
         factory = Mock(return_value=client)
         monkeypatch.setattr(server, "SimpleUDPClient", factory)
         transport = Mock()
         endpoint = AsyncMock(return_value=(transport, Mock()))
-        monkeypatch.setattr(server, "AsyncIOOSCUDPServer", Mock(return_value=Mock(create_serve_endpoint=endpoint)))
-        task = asyncio.create_task(server.serve(Config("127.0.0.1", "fake", "fake", forward_host="127.0.0.2")))
+        monkeypatch.setattr(
+            server,
+            "AsyncIOOSCUDPServer",
+            Mock(return_value=Mock(create_serve_endpoint=endpoint)),
+        )
+        task = asyncio.create_task(
+            server.serve(Config("127.0.0.1", "fake", "fake", forward_host="127.0.0.2"))
+        )
         for _ in range(10):
             if endpoint.await_count:
                 break
@@ -109,7 +144,8 @@ def test_serve_forwarding_lifecycle(monkeypatch):
         with pytest.raises(asyncio.CancelledError):
             await task
         detach.assert_called_once()
-        client.__exit__.assert_called_once()
+        client.close.assert_called_once()
         transport.close.assert_called_once()
         robot.__aexit__.assert_awaited_once()
+
     asyncio.run(scenario())

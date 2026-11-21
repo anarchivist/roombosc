@@ -177,3 +177,9 @@ The default level is `INFO`. Supported levels are `DEBUG`, `INFO`, `WARNING`,
 `log_level: "DEBUG"` in YAML, with the CLI taking precedence. Each outgoing
 command is logged immediately before sending, including the separate `stop` and
 `dock` steps of `home`. A send log records an attempt, not robot acknowledgement.
+
+At `DEBUG`, each incoming decoded Roomba event is also logged, including nested
+state values. Event logging works with OSC forwarding enabled or disabled and
+continues if forwarding fails. The event callback is registered before the robot
+connects and detached on shutdown. Debug event logs may contain private device
+state; handle them with the same care as telemetry output.

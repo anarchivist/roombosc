@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from contextlib import ExitStack, suppress
 from typing import Protocol, cast
 
@@ -43,6 +44,10 @@ def validate_message(address: str, args: tuple[object, ...]) -> str:
 
 
 class Robot(Protocol):
+    def register_on_message_callback(
+        self, callback: Callable[[RoombaMessage], None]
+    ) -> Callable[[], None]: ...
+
     async def send_command(self, command: str) -> None: ...
 
 
@@ -53,7 +58,13 @@ class Bridge:
         listen_address: tuple[str, int] = ("127.0.0.1", 9000),
         *,
         robot_host: str = "unknown",
+        stop_retries: int = 3,
+        stop_timeout: float = 5.0,
+        stop_retry_backoff: float = 0.25,
     ) -> None:
+        self.stop_retries = stop_retries
+        self.stop_timeout = stop_timeout
+        self.stop_retry_backoff = stop_retry_backoff
         self.robot = robot
         self.robot_host = robot_host
         self.listen_address = listen_address
@@ -95,14 +106,61 @@ class Bridge:
         await self.robot.send_command(command)
         LOG.debug("Published Roomba command %s to %s", command, self.robot_host)
 
+    async def stop(self) -> bool:
+        stopped = asyncio.Event()
+
+        def on_message(message: RoombaMessage) -> None:
+            phase = (
+                message.get("state", {})
+                .get("reported", {})
+                .get("cleanMissionStatus", {})
+                .get("phase")
+            )
+            if phase == "stop":
+                stopped.set()
+
+        # Subscribe before publishing: even an immediate confirmation must be seen.
+        detach = self.robot.register_on_message_callback(on_message)
+        try:
+            async with asyncio.timeout(self.stop_timeout):
+                delay = self.stop_retry_backoff
+                for attempt in range(self.stop_retries + 1):
+                    if stopped.is_set():
+                        break
+                    await self.send_command("stop")
+                    if attempt == self.stop_retries:
+                        await stopped.wait()
+                        break
+                    try:
+                        await asyncio.wait_for(stopped.wait(), timeout=delay)
+                        break
+                    except TimeoutError:
+                        LOG.warning(
+                            "Stop confirmation missing; retry %s/%s",
+                            attempt + 1,
+                            self.stop_retries,
+                        )
+                        delay *= 2
+        except TimeoutError:
+            LOG.error(
+                "Stop failed: stopped state not confirmed within %s seconds",
+                self.stop_timeout,
+            )
+            return False
+        finally:
+            detach()
+        LOG.info("Roomba confirmed stopped state")
+        return True
+
     async def run(self) -> None:
         while True:
             command = await self.queue.get()
             try:
                 if command == "home":
-                    # send_command awaits MQTT publication, not physical stopping.
-                    await self.send_command("stop")
-                    await self.send_command("dock")
+                    if await self.stop():
+                        await self.send_command("dock")
+                elif command == "stop":
+                    await self.stop()
                 else:
                     await self.send_command(command)
             except Exception:
@@ -142,7 +200,12 @@ async def serve(config: Config) -> None:
         resources.callback(detach)
         async with robot:
             bridge = Bridge(
-                robot, (config.listen_host, config.listen_port), robot_host=config.ip
+                robot,
+                (config.listen_host, config.listen_port),
+                robot_host=config.ip,
+                stop_retries=config.stop_retries,
+                stop_timeout=config.stop_timeout,
+                stop_retry_backoff=config.stop_retry_backoff,
             )
             server = AsyncIOOSCUDPServer(
                 (config.listen_host, config.listen_port),

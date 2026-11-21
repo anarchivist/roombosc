@@ -1,6 +1,7 @@
 """CLI and safe YAML configuration loading; no device I/O."""
 
 import argparse
+import math
 from dataclasses import dataclass, field
 from ipaddress import ip_address
 from pathlib import Path
@@ -21,10 +22,23 @@ class Config:
     forward_host: str | None = None
     forward_port: int = 9001
     log_level: str = "INFO"
+    stop_retries: int = 3
+    stop_timeout: float = 5.0
+    stop_retry_backoff: float = 0.25
     log_to_file: bool = False
     log_file: str = "log/roombosc.log"
 
     def __post_init__(self) -> None:
+        if type(self.stop_retries) is not int or self.stop_retries < 0:
+            raise ValueError("stop_retries must be a nonnegative integer")
+        for name in ("stop_timeout", "stop_retry_backoff"):
+            value = getattr(self, name)
+            if (
+                type(value) not in (int, float)
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(f"{name} must be a positive finite number")
         if type(self.log_to_file) is not bool:
             raise ValueError("log_to_file must be a boolean")
         if (
@@ -96,6 +110,19 @@ def parse_config(argv: list[str] | None = None) -> Config:
         "--log-file",
         help="Log path (default: log/roombosc.log); requires --log-to-file",
     )
+    parser.add_argument(
+        "--stop-retries", type=int, help="Additional stop attempts (default: 3)"
+    )
+    parser.add_argument(
+        "--stop-timeout",
+        type=float,
+        help="Total stop confirmation timeout in seconds (default: 5)",
+    )
+    parser.add_argument(
+        "--stop-retry-backoff",
+        type=float,
+        help="Initial confirmation wait in seconds, doubled per retry (default: 0.25)",
+    )
     args = parser.parse_args(argv)
     values = {}
     if args.config:
@@ -109,7 +136,7 @@ def parse_config(argv: list[str] | None = None) -> Config:
             key not in Config.__dataclass_fields__ for key in values
         ):
             parser.error(
-                "configuration must be a mapping with only ip, blid, password, listen_host, listen_port, forward_host, forward_port, log_level, log_to_file, log_file"
+                "configuration must be a mapping with only ip, blid, password, listen_host, listen_port, forward_host, forward_port, log_level, log_to_file, log_file, stop_retries, stop_timeout, stop_retry_backoff"
             )
     values.update(
         {

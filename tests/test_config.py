@@ -171,3 +171,50 @@ def test_log_file_directory_and_symlink(tmp_path):
             path.symlink_to(tmp_path / "missing")
         with pytest.raises(ValueError, match="log_file"):
             Config("127.0.0.1", "fake", "fake", log_file=str(path))
+
+
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("stop_retries", -1),
+        ("stop_retries", True),
+        ("stop_retries", 1.5),
+        ("stop_timeout", 0),
+        ("stop_timeout", float("inf")),
+        ("stop_timeout", float("nan")),
+        ("stop_retry_backoff", -1),
+        ("stop_retry_backoff", True),
+    ],
+)
+def test_invalid_stop_settings(name, value):
+    with pytest.raises(ValueError, match=name):
+        Config("127.0.0.1", "fake", "fake", **{name: value})
+
+
+def test_stop_settings_cli_yaml(tmp_path):
+    config = parse_config(BASE)
+    assert (config.stop_retries, config.stop_timeout, config.stop_retry_backoff) == (
+        3,
+        5,
+        0.25,
+    )
+    path = tmp_path / "config.yaml"
+    path.write_text("stop_retries: 1\nstop_timeout: 2\nstop_retry_backoff: 0.1\n")
+    config = parse_config(
+        BASE
+        + [
+            "--config",
+            str(path),
+            "--stop-retries",
+            "0",
+            "--stop-timeout",
+            "3",
+            "--stop-retry-backoff",
+            "0.2",
+        ]
+    )
+    assert (config.stop_retries, config.stop_timeout, config.stop_retry_backoff) == (
+        0,
+        3,
+        0.2,
+    )

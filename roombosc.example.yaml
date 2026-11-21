@@ -1,0 +1,8 @@
+ip: "192.168.1.50"
+blid: "your-blid"
+password: "your-password"
+listen_host: "127.0.0.1"
+listen_port: 9000
+# Uncomment to forward received robot messages to another OSC server:
+# forward_host: "127.0.0.1"
+# forward_port: 9001

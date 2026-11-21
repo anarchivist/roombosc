@@ -47,20 +47,39 @@ class Robot(Protocol):
 
 
 class Bridge:
-    def __init__(self, robot: Robot) -> None:
+    def __init__(
+        self, robot: Robot, listen_address: tuple[str, int] = ("127.0.0.1", 9000)
+    ) -> None:
         self.robot = robot
+        self.listen_address = listen_address
         self.queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
         # Route every packet through exact validation: OSC patterns must not
         # expand into multiple robot actions. Disable blocking timetag sleeps.
         self.dispatcher = Dispatcher(strict_timing=False)
-        self.dispatcher.set_default_handler(self.receive)
+        self.dispatcher.set_default_handler(self.receive_from, needs_reply_address=True)
 
-    def receive(self, address: str, *args: object) -> None:
+    def receive_from(
+        self, sender: tuple[str, int], address: str, *args: object
+    ) -> None:
+        self.receive(address, *args, sender=sender)
+
+    def receive(
+        self, address: str, *args: object, sender: tuple[str, int] | None = None
+    ) -> None:
         try:
             command = validate_message(address, args)
         except ValueError as exc:
             LOG.warning("Rejected OSC message: %s", exc)
             return
+        if sender is not None:
+            LOG.info(
+                "Received OSC command %s from [%s]:%s on [%s]:%s",
+                address,
+                sender[0],
+                sender[1],
+                self.listen_address[0],
+                self.listen_address[1],
+            )
         try:
             self.queue.put_nowait(command)
         except asyncio.QueueFull:
@@ -107,7 +126,7 @@ async def serve(config: Config) -> None:
             detach = robot.register_on_message_callback(forwarder.receive)
             resources.callback(detach)
         async with robot:
-            bridge = Bridge(robot)
+            bridge = Bridge(robot, (config.listen_host, config.listen_port))
             server = AsyncIOOSCUDPServer(
                 (config.listen_host, config.listen_port),
                 bridge.dispatcher,

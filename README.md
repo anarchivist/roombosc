@@ -101,6 +101,11 @@ from pythonosc.udp_client import SimpleUDPClient
 SimpleUDPClient("127.0.0.1", 9000).send_message("/roomba/pause", [])
 ```
 
+Each accepted incoming command is logged at INFO level with its OSC address,
+sender IP/port, and local listener bind IP/port. A wildcard listener such as
+`0.0.0.0` is logged as that bind address. Receipt does not confirm successful
+robot execution; queue overflow or send failures are logged separately.
+
 Other addresses, address patterns, and all arguments are rejected. Commands
 execute sequentially through an async worker with a 100-command queue; overflow
 is dropped and logged. Future OSC timetags are processed immediately. Failed

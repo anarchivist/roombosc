@@ -219,3 +219,40 @@ def test_rejected_command_does_not_log_arguments(caplog):
     assert "FAKE_PRIVATE_ARGUMENT" not in caplog.text
     assert "Received OSC command" not in caplog.text
     assert bridge.queue.empty()
+
+
+@pytest.mark.parametrize("level, logged", [(10, True), (20, False)])
+def test_outgoing_command_logging(caplog, level, logged):
+    async def scenario():
+        robot = AsyncMock()
+        bridge = Bridge(robot, robot_host="192.0.2.50")
+        bridge.receive("/roomba/home")
+        worker = asyncio.create_task(bridge.run())
+        with caplog.at_level(level, logger="roombosc.server"):
+            await asyncio.wait_for(bridge.queue.join(), timeout=1)
+        messages = [r.getMessage() for r in caplog.records if r.levelno == 10]
+        expected = [
+            "Sending Roomba command stop to 192.0.2.50",
+            "Sending Roomba command dock to 192.0.2.50",
+        ]
+        assert messages == (expected if logged else [])
+        worker.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await worker
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("address", ["/roomba/unknown", "/roomba/*", "/bad\naddress"])
+def test_unsupported_address_logged(caplog, address):
+    bridge = Bridge(AsyncMock())
+    builder = OscMessageBuilder(address=address)
+    builder.add_arg("FAKE_PRIVATE_ARGUMENT")
+    bridge.dispatcher.call_handlers_for_packet(
+        builder.build().dgram, ("127.0.0.1", 4567)
+    )
+    assert (
+        f"Rejected OSC message at {address!r}: unsupported OSC address" in caplog.text
+    )
+    assert "FAKE_PRIVATE_ARGUMENT" not in caplog.text
+    assert bridge.queue.empty()

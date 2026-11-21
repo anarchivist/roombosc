@@ -163,3 +163,17 @@ uv run --frozen pytest
 Use `uv run ruff format .` to apply formatting. Ruff checks imports and common
 Python errors; MyPy checks application and test code, requiring annotations for
 application function definitions. GitHub Actions runs all four checks.
+
+## Logging
+
+Use `--log-level DEBUG` to show outgoing Roomba commands and their destination IP:
+
+```sh
+uv run roombosc --config roombosc.yaml --log-level DEBUG
+```
+
+The default level is `INFO`. Supported levels are `DEBUG`, `INFO`, `WARNING`,
+`ERROR`, and `CRITICAL`; CLI values are case insensitive. You can also set
+`log_level: "DEBUG"` in YAML, with the CLI taking precedence. Each outgoing
+command is logged immediately before sending, including the separate `stop` and
+`dock` steps of `home`. A send log records an attempt, not robot acknowledgement.

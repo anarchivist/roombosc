@@ -35,8 +35,9 @@ expose the listener only to trusted senders.
 
 ## OSC commands
 
-Send a message to `/roomba/<command>` with **zero arguments**. The complete
-allowlist comes from the upstream [command description](https://github.com/henrythasler/roomba/blob/master/README.md#command-description):
+Send a message to `/roomba/<command>` with **zero arguments**. The command
+allowlist comes from the upstream [command description](https://github.com/henrythasler/roomba/blob/master/README.md#command-description),
+with `home` added as an alias for `dock`:
 
 | Command | Action |
 | --- | --- |
@@ -44,7 +45,7 @@ allowlist comes from the upstream [command description](https://github.com/henry
 | `quick` | Begin a single-pass mission |
 | `stop` | Abort the mission |
 | `pause`, `resume` | Pause or resume the mission |
-| `dock` | Return to the dock |
+| `dock`, `home` | Return to the dock (`home` sends `dock`) |
 | `fbeep` | Emit one beep |
 | `find` | Toggle locator beeping |
 | `off` | Power off, including Wi-Fi; requires physical wake-up |

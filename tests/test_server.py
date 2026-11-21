@@ -149,3 +149,20 @@ def test_serve_forwarding_lifecycle(monkeypatch):
         robot.__aexit__.assert_awaited_once()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("address", ["/roomba/dock", "/roomba/home"])
+def test_docking_alias_dispatch(address):
+    async def scenario():
+        robot = AsyncMock()
+        bridge = Bridge(robot)
+        packet = OscMessageBuilder(address=address).build()
+        bridge.dispatcher.call_handlers_for_packet(packet.dgram, ("127.0.0.1", 1234))
+        worker = asyncio.create_task(bridge.run())
+        await asyncio.wait_for(bridge.queue.join(), timeout=1)
+        robot.send_command.assert_awaited_once_with("dock")
+        worker.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await worker
+
+    asyncio.run(scenario())

@@ -9,3 +9,4 @@ roombosc.yaml
 .ruff_cache/
 .mypy_cache/
 log/*
+/config/

@@ -31,7 +31,7 @@ COMMANDS = frozenset(
     }
 )
 ADDRESSES = {f"/roomba/{command}": command for command in COMMANDS}
-ADDRESSES["/roomba/home"] = "dock"
+ADDRESSES["/roomba/home"] = "home"
 
 
 def validate_message(address: str, args: tuple[object, ...]) -> str:
@@ -70,7 +70,11 @@ class Bridge:
         while True:
             command = await self.queue.get()
             try:
-                await self.robot.send_command(command)
+                if command == "home":
+                    await self.robot.send_command("stop")
+                    await self.robot.send_command("dock")
+                else:
+                    await self.robot.send_command(command)
             except Exception:
                 # Do not retry movement commands or expose credentials in errors.
                 LOG.error("Roomba command %s failed", command)

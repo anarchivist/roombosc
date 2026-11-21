@@ -189,3 +189,33 @@ def test_home_sequence_and_failure_recovery(fail_stop):
             await worker
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "::1"])
+def test_incoming_command_logs_endpoints(caplog, host):
+    import logging
+
+    bridge = Bridge(AsyncMock(), (host, 9002))
+    packet = OscMessageBuilder(address="/roomba/home").build()
+    with caplog.at_level(logging.INFO, logger="roombosc.server"):
+        bridge.dispatcher.call_handlers_for_packet(packet.dgram, (host, 4567))
+    assert (
+        f"Received OSC command /roomba/home from [{host}]:4567 on [{host}]:9002"
+        in caplog.text
+    )
+    assert bridge.queue.get_nowait() == "home"
+
+
+def test_rejected_command_does_not_log_arguments(caplog):
+    import logging
+
+    bridge = Bridge(AsyncMock())
+    builder = OscMessageBuilder(address="/roomba/start")
+    builder.add_arg("FAKE_PRIVATE_ARGUMENT")
+    with caplog.at_level(logging.INFO, logger="roombosc.server"):
+        bridge.dispatcher.call_handlers_for_packet(
+            builder.build().dgram, ("127.0.0.1", 4567)
+        )
+    assert "FAKE_PRIVATE_ARGUMENT" not in caplog.text
+    assert "Received OSC command" not in caplog.text
+    assert bridge.queue.empty()

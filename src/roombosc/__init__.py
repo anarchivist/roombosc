@@ -9,7 +9,7 @@ def main() -> None:
     from .server import serve
 
     config = parse_config()
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=config.log_level)
     try:
         asyncio.run(serve(config))
     except KeyboardInterrupt:

@@ -106,3 +106,30 @@ def test_forward_yaml_override(tmp_path):
     config = parse_config(BASE + ["--config", str(path), "--forward-port", "9003"])
     assert config.forward_host == "127.0.0.2"
     assert config.forward_port == 9003
+
+
+@pytest.mark.parametrize("level", ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
+def test_log_level_cli(level):
+    assert parse_config(BASE + ["--log-level", level.lower()]).log_level == level
+
+
+def test_log_level_defaults_and_yaml_override(tmp_path):
+    assert parse_config(BASE).log_level == "INFO"
+    path = tmp_path / "config.yaml"
+    path.write_text('log_level: "WARNING"\n')
+    assert parse_config(BASE + ["--config", str(path)]).log_level == "WARNING"
+    assert (
+        parse_config(BASE + ["--config", str(path), "--log-level", "DEBUG"]).log_level
+        == "DEBUG"
+    )
+
+
+@pytest.mark.parametrize("value", ["INVALID", "", None, 10])
+def test_invalid_log_level(value):
+    with pytest.raises(ValueError, match="log_level"):
+        Config("127.0.0.1", "fake", "fake", log_level=value)
+
+
+def test_invalid_cli_log_level():
+    with pytest.raises(SystemExit):
+        parse_config(BASE + ["--log-level", "invalid"])

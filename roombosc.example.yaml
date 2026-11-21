@@ -6,3 +6,4 @@ listen_port: 9000
 # Uncomment to forward received robot messages to another OSC server:
 # forward_host: "127.0.0.1"
 # forward_port: 9001
+log_level: "INFO"

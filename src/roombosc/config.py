@@ -7,6 +7,8 @@ from pathlib import Path
 
 import yaml
 
+LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
 
 @dataclass(frozen=True)
 class Config:
@@ -18,8 +20,13 @@ class Config:
 
     forward_host: str | None = None
     forward_port: int = 9001
+    log_level: str = "INFO"
 
     def __post_init__(self) -> None:
+        if self.log_level not in LOG_LEVELS:
+            raise ValueError(
+                "log_level must be DEBUG, INFO, WARNING, ERROR, or CRITICAL"
+            )
         for name in ("ip", "listen_host", "forward_host"):
             if name == "forward_host" and self.forward_host is None:
                 continue
@@ -56,6 +63,12 @@ def parse_config(argv: list[str] | None = None) -> Config:
     parser.add_argument(
         "--forward-port", type=int, help="Destination OSC UDP port (default: 9001)"
     )
+    parser.add_argument(
+        "--log-level",
+        type=str.upper,
+        choices=LOG_LEVELS,
+        help="Application log level (default: INFO)",
+    )
     args = parser.parse_args(argv)
     values = {}
     if args.config:
@@ -69,7 +82,7 @@ def parse_config(argv: list[str] | None = None) -> Config:
             key not in Config.__dataclass_fields__ for key in values
         ):
             parser.error(
-                "configuration must be a mapping with only ip, blid, password, listen_host, listen_port, forward_host, forward_port"
+                "configuration must be a mapping with only ip, blid, password, listen_host, listen_port, forward_host, forward_port, log_level"
             )
     values.update(
         {

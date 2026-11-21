@@ -48,9 +48,14 @@ class Robot(Protocol):
 
 class Bridge:
     def __init__(
-        self, robot: Robot, listen_address: tuple[str, int] = ("127.0.0.1", 9000)
+        self,
+        robot: Robot,
+        listen_address: tuple[str, int] = ("127.0.0.1", 9000),
+        *,
+        robot_host: str = "unknown",
     ) -> None:
         self.robot = robot
+        self.robot_host = robot_host
         self.listen_address = listen_address
         self.queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
         # Route every packet through exact validation: OSC patterns must not
@@ -69,7 +74,7 @@ class Bridge:
         try:
             command = validate_message(address, args)
         except ValueError as exc:
-            LOG.warning("Rejected OSC message: %s", exc)
+            LOG.warning("Rejected OSC message at %r: %s", address, exc)
             return
         if sender is not None:
             LOG.info(
@@ -85,15 +90,19 @@ class Bridge:
         except asyncio.QueueFull:
             LOG.warning("Command queue full; command dropped")
 
+    async def send_command(self, command: str) -> None:
+        LOG.debug("Sending Roomba command %s to %s", command, self.robot_host)
+        await self.robot.send_command(command)
+
     async def run(self) -> None:
         while True:
             command = await self.queue.get()
             try:
                 if command == "home":
-                    await self.robot.send_command("stop")
-                    await self.robot.send_command("dock")
+                    await self.send_command("stop")
+                    await self.send_command("dock")
                 else:
-                    await self.robot.send_command(command)
+                    await self.send_command(command)
             except Exception:
                 # Do not retry movement commands or expose credentials in errors.
                 LOG.error("Roomba command %s failed", command)
@@ -126,7 +135,9 @@ async def serve(config: Config) -> None:
             detach = robot.register_on_message_callback(forwarder.receive)
             resources.callback(detach)
         async with robot:
-            bridge = Bridge(robot, (config.listen_host, config.listen_port))
+            bridge = Bridge(
+                robot, (config.listen_host, config.listen_port), robot_host=config.ip
+            )
             server = AsyncIOOSCUDPServer(
                 (config.listen_host, config.listen_port),
                 bridge.dispatcher,

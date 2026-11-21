@@ -12,8 +12,8 @@
 ```
 
 An asynchronous Python 3.11+ OSC/UDP bridge for a Wi-Fi Roomba 960, using
-`roombapy` 2 and `python-osc`. Device discovery and credential retrieval are
-outside this project; supply your own IP address, BLID, and password.
+`roombapy` 2 and `python-osc`. Supply your own IP address, BLID, and password;
+the included `roombapy` CLI can help retrieve them as described below.
 
 Install dependencies and run:
 
@@ -43,6 +43,29 @@ and ports outside 1–65535 are rejected. Keep the credential file private;
 The OSC listener defaults to `127.0.0.1:9000`. Set `listen_host` to the computer's
 LAN IP to receive from another machine. OSC UDP provides no authentication;
 expose the listener only to trusted senders.
+
+## Retrieve device credentials
+
+The `roombapy[cli]` dependency includes discovery commands. After `uv sync`, run
+these yourself on the same local network as the robot:
+
+```sh
+# Discover robots and attempt to retrieve their BLIDs and passwords:
+uv run roombapy discover --raw
+# Or target a known robot IP:
+uv run roombapy discover --raw 192.168.1.50
+```
+
+The pinned CLI marks `--raw` as required, so these examples include it.
+For local password retrieval, `roombapy` instructs you to leave the robot powered
+on at its dock, hold HOME until a series of tones plays, then release it; the
+Wi-Fi light flashes. Run discovery while the robot is in this mode. If discovery
+reports that the password could not be obtained, it has not retrieved usable
+credentials; prepare the robot again and retry.
+
+Copy the reported IP, BLID, and password into your private `roombosc.yaml`, keeping
+BLID and password quoted. Discovery output contains credentials: do not commit or
+share it. The bridge does not run discovery automatically.
 
 ## OSC commands
 

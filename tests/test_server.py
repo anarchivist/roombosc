@@ -151,8 +151,11 @@ def test_serve_forwarding_lifecycle(monkeypatch):
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("address", ["/roomba/dock", "/roomba/home"])
-def test_docking_alias_dispatch(address):
+@pytest.mark.parametrize(
+    ("address", "expected"),
+    [("/roomba/dock", ["dock"]), ("/roomba/home", ["stop", "dock"])],
+)
+def test_docking_dispatch(address, expected):
     async def scenario():
         robot = AsyncMock()
         bridge = Bridge(robot)
@@ -160,7 +163,27 @@ def test_docking_alias_dispatch(address):
         bridge.dispatcher.call_handlers_for_packet(packet.dgram, ("127.0.0.1", 1234))
         worker = asyncio.create_task(bridge.run())
         await asyncio.wait_for(bridge.queue.join(), timeout=1)
-        robot.send_command.assert_awaited_once_with("dock")
+        assert [call.args[0] for call in robot.send_command.await_args_list] == expected
+        worker.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await worker
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("fail_stop", [False, True])
+def test_home_sequence_and_failure_recovery(fail_stop):
+    async def scenario():
+        robot = AsyncMock()
+        if fail_stop:
+            robot.send_command.side_effect = [RuntimeError("stop failed"), None]
+        bridge = Bridge(robot)
+        bridge.receive("/roomba/home")
+        bridge.receive("/roomba/pause")
+        worker = asyncio.create_task(bridge.run())
+        await asyncio.wait_for(bridge.queue.join(), timeout=1)
+        expected = ["stop", "pause"] if fail_stop else ["stop", "dock", "pause"]
+        assert [call.args[0] for call in robot.send_command.await_args_list] == expected
         worker.cancel()
         with pytest.raises(asyncio.CancelledError):
             await worker

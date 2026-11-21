@@ -48,7 +48,7 @@ expose the listener only to trusted senders.
 
 Send a message to `/roomba/<command>` with **zero arguments**. The command
 allowlist comes from the upstream [command description](https://github.com/henrythasler/roomba/blob/master/README.md#command-description),
-with `home` added as an alias for `dock`:
+with `home` added to stop the current mission and then dock:
 
 | Command | Action |
 | --- | --- |
@@ -56,11 +56,16 @@ with `home` added as an alias for `dock`:
 | `quick` | Begin a single-pass mission |
 | `stop` | Abort the mission |
 | `pause`, `resume` | Pause or resume the mission |
-| `dock`, `home` | Return to the dock (`home` sends `dock`) |
+| `dock` | Return to the dock |
+| `home` | Send `stop`, then `dock`, in order |
 | `fbeep` | Emit one beep |
 | `find` | Toggle locator beeping |
 | `off` | Power off, including Wi-Fi; requires physical wake-up |
 | `sleep`, `wake` | Enter standby or wake up |
+
+The `home` command runs both steps together in the command worker, so other
+commands cannot interleave. If sending `stop` fails, `dock` is skipped and the
+failure is logged. Neither step is retried automatically.
 
 The upstream description notes that `fbeep`, `find`, and `wake` do not operate
 while charging. Firmware determines actual device behavior.

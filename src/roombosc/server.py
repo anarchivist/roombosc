@@ -93,12 +93,14 @@ class Bridge:
     async def send_command(self, command: str) -> None:
         LOG.debug("Sending Roomba command %s to %s", command, self.robot_host)
         await self.robot.send_command(command)
+        LOG.debug("Published Roomba command %s to %s", command, self.robot_host)
 
     async def run(self) -> None:
         while True:
             command = await self.queue.get()
             try:
                 if command == "home":
+                    # send_command awaits MQTT publication, not physical stopping.
                     await self.send_command("stop")
                     await self.send_command("dock")
                 else:

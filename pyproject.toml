@@ -44,3 +44,6 @@ warn_redundant_casts = true
 [[tool.mypy.overrides]]
 module = "roombosc.*"
 disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+addopts = "-v"

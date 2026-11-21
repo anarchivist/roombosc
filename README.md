@@ -183,3 +183,20 @@ state values. Event logging works with OSC forwarding enabled or disabled and
 continues if forwarding fails. The event callback is registered before the robot
 connects and detached on shutdown. Debug event logs may contain private device
 state; handle them with the same care as telemetry output.
+
+Logs go to stderr by default. To also append to a UTF-8 log file:
+
+```sh
+uv run roombosc --config roombosc.yaml --log-level DEBUG --log-to-file
+# Choose a different file:
+uv run roombosc --config roombosc.yaml --log-to-file --log-file log/session.log
+```
+
+The default file is `log/roombosc.log`, relative to the working directory.
+`--log-file` alone does not enable file logging. YAML equivalents are
+`log_to_file: true` and `log_file: "log/roombosc.log"`; `--no-log-to-file`
+overrides YAML to disable it. Both outputs use the selected log level and include
+timestamps. Parent directories are created only when file logging is enabled;
+existing files are appended to. Directory and symlink destinations are rejected.
+If the file cannot be opened, startup fails before connecting to the robot.
+Logs are not rotated automatically; keep debug logs private and manage their size.

@@ -133,3 +133,41 @@ def test_invalid_log_level(value):
 def test_invalid_cli_log_level():
     with pytest.raises(SystemExit):
         parse_config(BASE + ["--log-level", "invalid"])
+
+
+def test_file_logging_options(tmp_path):
+    default = parse_config(BASE)
+    assert default.log_to_file is False
+    assert default.log_file == "log/roombosc.log"
+    path = tmp_path / "config.yaml"
+    path.write_text('log_to_file: true\nlog_file: "custom.log"\n')
+    configured = parse_config(BASE + ["--config", str(path)])
+    assert configured.log_to_file is True
+    assert configured.log_file == "custom.log"
+    assert not parse_config(
+        BASE + ["--config", str(path), "--no-log-to-file"]
+    ).log_to_file
+    override = parse_config(BASE + ["--config", str(path), "--log-file", "other.log"])
+    assert override.log_file == "other.log"
+    assert parse_config(BASE + ["--log-to-file"]).log_to_file
+    assert not parse_config(BASE + ["--log-file", "other.log"]).log_to_file
+
+
+@pytest.mark.parametrize("value", ["", " ", "bad\x00path", "bad\npath", None, 42])
+def test_invalid_log_file(value):
+    with pytest.raises(ValueError, match="log_file"):
+        Config("127.0.0.1", "fake", "fake", log_file=value)
+
+
+@pytest.mark.parametrize("value", ["true", None, 1])
+def test_invalid_log_to_file(value):
+    with pytest.raises(ValueError, match="log_to_file"):
+        Config("127.0.0.1", "fake", "fake", log_to_file=value)
+
+
+def test_log_file_directory_and_symlink(tmp_path):
+    for path in (tmp_path, tmp_path / "link"):
+        if path != tmp_path:
+            path.symlink_to(tmp_path / "missing")
+        with pytest.raises(ValueError, match="log_file"):
+            Config("127.0.0.1", "fake", "fake", log_file=str(path))

@@ -7,3 +7,5 @@ listen_port: 9000
 # forward_host: "127.0.0.1"
 # forward_port: 9001
 log_level: "INFO"
+log_to_file: false
+log_file: "log/roombosc.log"

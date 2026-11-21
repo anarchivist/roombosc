@@ -19,7 +19,7 @@ Install dependencies and run:
 
 ```sh
 uv sync
-cp roombosc.example.yaml roombosc.yaml
+cp config/roombosc.example.yaml roombosc.yaml
 # Edit roombosc.yaml with your device credentials, then:
 uv run roombosc --config roombosc.yaml
 ```
@@ -30,7 +30,7 @@ configuration, and running tests do not connect to a robot.
 ## Configuration
 
 CLI settings override the flat YAML values in
-[roombosc.example.yaml](roombosc.example.yaml). Omitted settings use these defaults:
+[roombosc.example.yaml](config/roombosc.example.yaml). Omitted settings use these defaults:
 
 | CLI option | YAML key | Default | Purpose / validation |
 | --- | --- | --- | --- |
@@ -56,6 +56,9 @@ Example without YAML:
 uv run roombosc --ip 192.168.1.50 --blid YOUR_BLID --password YOUR_PASSWORD \
   --listen-host 127.0.0.1 --listen-port 9000
 ```
+
+The tracked example lives in `config/`; other files in that directory are ignored
+so private configurations can be kept there.
 
 Unknown YAML keys and invalid values are rejected. Keep real credentials in your
 private, ignored `roombosc.yaml`; CLI passwords may appear in process listings.

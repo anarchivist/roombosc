@@ -103,3 +103,18 @@ are dropped and logged without retries or interrupting command processing.
 There is no fragmentation or acknowledgement. Choose a destination separate
 from the command listener and keep it on a trusted network; telemetry may include
 private device state.
+
+## Code checks
+
+Install development tools with `uv sync --locked --dev`, then run:
+
+```sh
+uv run --frozen ruff check .
+uv run --frozen ruff format --check .
+uv run --frozen mypy
+uv run --frozen pytest
+```
+
+Use `uv run ruff format .` to apply formatting. Ruff checks imports and common
+Python errors; MyPy checks application and test code, requiring annotations for
+application function definitions. GitHub Actions runs all four checks.

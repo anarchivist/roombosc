@@ -26,5 +26,14 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --locked --dev
 
+      - name: Lint with Ruff
+        run: uv run --frozen ruff check .
+
+      - name: Check formatting with Ruff
+        run: uv run --frozen ruff format --check .
+
+      - name: Type check with MyPy
+        run: uv run --frozen mypy
+
       - name: Run tests
         run: uv run --frozen pytest

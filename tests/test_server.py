@@ -467,3 +467,11 @@ def test_stop_cancellation_removes_listener():
         robot.send_command.assert_awaited_once_with("stop")
 
     asyncio.run(scenario())
+
+
+def test_default_stop_retry_backoff():
+    from roombosc.config import Config
+
+    bridge = Bridge(confirming_robot())
+    config = Config("127.0.0.1", "fake", "fake")
+    assert bridge.stop_retry_backoff == config.stop_retry_backoff == 1.0

@@ -196,7 +196,7 @@ def test_stop_settings_cli_yaml(tmp_path):
     assert (config.stop_retries, config.stop_timeout, config.stop_retry_backoff) == (
         3,
         5,
-        0.25,
+        1.0,
     )
     path = tmp_path / "config.yaml"
     path.write_text("stop_retries: 1\nstop_timeout: 2\nstop_retry_backoff: 0.1\n")

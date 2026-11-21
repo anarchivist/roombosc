@@ -24,7 +24,7 @@ class Config:
     log_level: str = "INFO"
     stop_retries: int = 3
     stop_timeout: float = 5.0
-    stop_retry_backoff: float = 0.25
+    stop_retry_backoff: float = 1.0
     log_to_file: bool = False
     log_file: str = "log/roombosc.log"
 
@@ -121,7 +121,7 @@ def parse_config(argv: list[str] | None = None) -> Config:
     parser.add_argument(
         "--stop-retry-backoff",
         type=float,
-        help="Initial confirmation wait in seconds, doubled per retry (default: 0.25)",
+        help="Initial confirmation wait in seconds, doubled per retry (default: 1.0)",
     )
     args = parser.parse_args(argv)
     values = {}

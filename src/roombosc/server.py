@@ -60,7 +60,7 @@ class Bridge:
         robot_host: str = "unknown",
         stop_retries: int = 3,
         stop_timeout: float = 5.0,
-        stop_retry_backoff: float = 0.25,
+        stop_retry_backoff: float = 1.0,
     ) -> None:
         self.stop_retries = stop_retries
         self.stop_timeout = stop_timeout

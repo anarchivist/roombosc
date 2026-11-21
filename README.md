@@ -47,7 +47,7 @@ CLI settings override the flat YAML values in
 | `--log-file PATH` | `log_file` | `log/roombosc.log` | Append UTF-8 logs here when file output is enabled; relative to the working directory. Rejects directories, symlinks, empty paths, and control characters. |
 | `--stop-retries COUNT` | `stop_retries` | `3` | Additional stop attempts without state confirmation; nonnegative integer (up to four publishes by default). |
 | `--stop-timeout SECONDS` | `stop_timeout` | `5.0` | Positive finite total timeout for stop publication, retries, and state confirmation. |
-| `--stop-retry-backoff SECONDS` | `stop_retry_backoff` | `0.25` | Positive finite initial confirmation wait; doubles before each retry. |
+| `--stop-retry-backoff SECONDS` | `stop_retry_backoff` | `1.0` | Positive finite initial confirmation wait; doubles before each retry. |
 | `--help` | — | — | Show command-line usage and exit. |
 
 Example without YAML:
@@ -110,10 +110,12 @@ both stop publication and stopped-state confirmation complete. Direct `dock`
 continues to send docking immediately.
 
 Without confirmation, the bridge republishes `stop` up to `stop_retries` times.
-By default it waits 0.25 seconds, then 0.5 seconds, then 1 second between
-attempts. After the last attempt it waits for confirmation until the total
-five-second deadline. The total timeout includes publication time and can cut
-retries short. Set `stop_retries: 0` for a single attempt that waits until the
+By default the confirmation waits start at 1 second and double to 2 seconds,
+then 4 seconds. The five-second total deadline takes precedence: normally this
+allows the initial publish and two retries (around 1 and 3 seconds), followed by
+waiting until the deadline. Increasing the total timeout allows the third retry
+after the 4-second wait. After the last allowed attempt, the bridge waits for
+confirmation until the deadline. Publication time also counts toward that limit. Set `stop_retries: 0` for a single attempt that waits until the
 deadline. No retries occur after confirmation; docking is never retried.
 
 If confirmation times out, the failure is logged and `home` skips docking.
